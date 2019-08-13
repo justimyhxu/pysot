@@ -85,9 +85,12 @@ class SiamRPNTracker(SiameseTracker):
         self.channel_average = np.mean(img, axis=(0, 1))
 
         # get crop
+        cuda_device = next(self.model.parameters()).device
         z_crop = self.get_subwindow(img, self.center_pos,
                                     cfg.TRACK.EXEMPLAR_SIZE,
-                                    s_z, self.channel_average)
+                                    s_z, self.channel_average, cuda_device)
+
+
         self.model.template(z_crop)
 
     def track(self, img):
@@ -102,9 +105,10 @@ class SiamRPNTracker(SiameseTracker):
         s_z = np.sqrt(w_z * h_z)
         scale_z = cfg.TRACK.EXEMPLAR_SIZE / s_z
         s_x = s_z * (cfg.TRACK.INSTANCE_SIZE / cfg.TRACK.EXEMPLAR_SIZE)
+        cuda_device = next(self.model.parameters()).device
         x_crop = self.get_subwindow(img, self.center_pos,
                                     cfg.TRACK.INSTANCE_SIZE,
-                                    round(s_x), self.channel_average)
+                                    round(s_x), self.channel_average, cuda_device)
 
         outputs = self.model.track(x_crop)
 

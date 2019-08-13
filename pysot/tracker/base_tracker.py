@@ -35,7 +35,7 @@ class BaseTracker(object):
 
 
 class SiameseTracker(BaseTracker):
-    def get_subwindow(self, im, pos, model_sz, original_sz, avg_chans):
+    def get_subwindow(self, im, pos, model_sz, original_sz, avg_chans, device = 'cuda:0'):
         """
         args:
             im: bgr based image
@@ -91,5 +91,5 @@ class SiameseTracker(BaseTracker):
         im_patch = im_patch.astype(np.float32)
         im_patch = torch.from_numpy(im_patch)
         if cfg.CUDA:
-            im_patch = im_patch.cuda()
+            im_patch = im_patch.cuda(device)
         return im_patch

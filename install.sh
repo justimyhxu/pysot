@@ -15,7 +15,7 @@ source $conda_path/etc/profile.d/conda.sh
 
 echo "****** create environment " $env_name "*****"
 # create environment
-conda create -y --name $env_name python=3.7
+conda create -y --name $env_name python=3.6
 conda activate $env_name
 
 echo "***** install numpy pytorch opencv *****"

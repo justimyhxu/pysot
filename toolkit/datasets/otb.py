@@ -92,7 +92,7 @@ class OTBDataset(Dataset):
         self.videos = {}
         for video in pbar:
             pbar.set_postfix_str(video)
-            self.videos[video] = OTBVideo(video,
+            self.videos[video] = OTBlVideo(video,
                                           dataset_root,
                                           meta_data[video]['video_dir'],
                                           meta_data[video]['init_rect'],
