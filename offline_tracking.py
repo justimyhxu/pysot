@@ -59,8 +59,8 @@ class Tracking_Proposal(object):
                  new_step=2,
                  with_pysot=True,
                  with_shuffle=False,
-                 num_gpus=8,
-                 num_workers=4,):
+                 num_gpus=1,
+                 num_workers=1):
         self.img_prefix = img_prefix
         self.new_step = new_step
         self.new_length = new_length
@@ -72,7 +72,6 @@ class Tracking_Proposal(object):
         self.result_dict = {}
         self.num_gpus = num_gpus
         self.num_workers = num_workers
-
 
     def load_proposal(self, path):
         proposal_dict = mmcv.load(path)
@@ -117,7 +116,7 @@ class Tracking_Proposal(object):
         keys = list(self.org_proposal_dict.keys())
         if self.with_shuffle:
             random.shuffle(keys)
-        shuffle_dict = [(key, self.org_proposal_dict[key]) for key in keys]
+        shuffle_dict = [(key, self.org_proposal_dict[key]) for key in keys if True or '-5KQ66BBWC' in key and 900<=int(key[-4:])<=950]
         video_per_gpu = int(len(shuffle_dict) // (self.num_gpus*self.num_workers))
         self.sub_shuffle_dict_list = [shuffle_dict[i * video_per_gpu:(i + 1) * video_per_gpu] if i != (self.num_gpus*self.num_workers) - 1
                                       else shuffle_dict[i * video_per_gpu:]
@@ -127,10 +126,11 @@ class Tracking_Proposal(object):
         self.shuffle_dict = shuffle_dict
 
     def tracking(self, index):
-        self.index = index
         # self.spilit_dict()
+        self.index = index
         self.spilit_org_proposal_dict()
-
+        if self.with_pysot:
+            self.init_tracker()
         # for video_id, frame_info in self.sub_shuffle_dict_list[index]:
         #     cnt = 0
         len_proposal = sum([len(proposals) for frame_info,proposals in self.sub_shuffle_dict_list[index]])
@@ -144,19 +144,22 @@ class Tracking_Proposal(object):
             indice = _FPS * (int(timestamp) - _TIMESTAMP_START) + 1
             image_tmpl = 'img_{:05}.jpg'
             # forward tracking
-
+            self.result_dict[frame_info] = []
             for ik, proposal in enumerate(proposals):
+                new_proposals = []
                 # begin = time.time()
+                # if ik !=  9:
+                #    continue
                 width, height  = [int(ll) for ll in self.video_stats[video_id].split('x')]
                 ROI = np.array([int(x) for x in  (proposal * np.array([
                     width, height, width, height, 1
                 ]))[:4]])
                 track_window = tuple(np.concatenate([ROI[:2],ROI[-2:]-ROI[:2]],axis=0).tolist())
-
+                
                 ann_frame = self._load_image(osp.join(self.img_prefix,
                                                       video_id),
                                                       image_tmpl, 'RGB', indice)
-                if False:
+                if False or frame_info == '-5KQ66BBWC4,0934' and False:
                     plt.imshow(ann_frame[:,:,::-1])
                     color = (random.random(), random.random(), random.random())
                     rect = plt.Rectangle((track_window[0],track_window[1]),
@@ -165,6 +168,7 @@ class Tracking_Proposal(object):
                                          edgecolor=color, linewidth=5)
                     plt.gca().add_patch(rect)
                     plt.show()
+                self.init_frame(ann_frame, track_window)
                 # Forcasting Tracking
                 p = indice - self.new_step
                 for i, ind in enumerate(
@@ -175,22 +179,25 @@ class Tracking_Proposal(object):
                     if self.with_pysot:
                         track_window = self.pysot_tracking_roi(track_window,
                                                                   key_frame=ann_frame,
-                                                                  tracked_frame=unann_frame)
+                                                                  tracked_frame=unann_frame, vis=  frame_info == '-5KQ66BBWC4,0934' and False)
                     else:
                         track_window = self.cv2_tracking_roi(track_window,
                                                               org_frame=ann_frame,
                                                               tracked_frame=unann_frame)
-                    self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), ik, ind)] = np.array(track_window) / np.array([width, height, width, height])
+                    new_proposals = [np.array(track_window) / np.array([width, height, width, height])] + new_proposals
+                    # self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), ik, ind)] = np.array(track_window) / np.array([width, height, width, height])
 
                     ann_frame = unann_frame.copy()
                     p -= self.new_step
-
+                    if frame_info == '-5KQ66BBWC4,0934' and False:
+                        print(self.index, np.array(ROI) / np.array([width, height, width, height]), np.array(track_window) / np.array([width, height, width, height]))
                 track_window = tuple(np.concatenate([ROI[:2], ROI[-2:] - ROI[:2]], axis=0).tolist())
                 ann_frame = self._load_image(osp.join(self.img_prefix,
                                                       video_id),
                                                       image_tmpl, 'RGB', indice)
-                self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), proposal,
-                                                      0)] = np.array(ROI) / np.array([width, height, width, height])
+                # self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), proposal,
+                new_proposals.append(np.array(ROI) / np.array([width, height, width, height]))
+                
 
                 # Backcasting Tracking
                 p = indice + self.new_step
@@ -202,26 +209,27 @@ class Tracking_Proposal(object):
                     if self.with_pysot:
                         track_window = self.pysot_tracking_roi(track_window,
                                                                key_frame=ann_frame,
-                                                               tracked_frame=unann_frame)
+                                                               tracked_frame=unann_frame, vis=frame_info == '-5KQ66BBWC4,0934' and False)
                     else:
                         track_window = self.cv2_tracking_roi(track_window,
                                                              org_frame=ann_frame,
                                                              tracked_frame=unann_frame)
-                    self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), ik, ind+2)] =np.array(track_window) / np.array([width, height, width, height])
+                    new_proposals += [np.array(track_window) / np.array([width, height, width, height])]
+                    #self.result_dict['{},{},{},{}'.format(video_id, '{:04d}'.format(int(timestamp)), ik, ind+2)] =np.array(track_window) / np.array([width, height, width, height])
 
                     ann_frame = unann_frame
                     p += self.new_step
-
                 end = time.time()
                 cnt_time +=(end-begin)
                 cnt_proposal += 1
                 avg_time = (end-begin)/cnt_proposal
                 left_time = (len_proposal-cnt_proposal)*avg_time
                 # print(left_time)
-                if cnt_proposal % 10  == 0:
-                    print('Process:{}, length_process:{},  video_id:{}, frame:{}, proposal_id:{}th, proposal_len:{}, per_cost_time:{} , left_time:{}'.format(self.index, len_proposal,
+                self.result_dict[frame_info].append((new_proposals, proposal[-1]))
+                if cnt_proposal % 10== 0:
+                    print('Process:{}, length_process:{}/{},  video_id:{}, frame:{}, proposal_id:{}th, proposal_len:{}, per_cost_time:{} , left_time:{}'.format(self.index, cnt_proposal, len_proposal,
                         video_id, timestamp,  ik, len(proposals), avg_time, datetime.timedelta(seconds=int(left_time))))
-
+                
             # print('cnt->>>{}!!!!'.format(cnt))
             #     cnt += 1
             #     if cnt >= 1:
@@ -244,14 +252,12 @@ class Tracking_Proposal(object):
         tracker = build_tracker(model)
         return tracker
 
-    def init_tracker(self, track_window, frame):
+    def init_tracker(self):
         self.tracking_model = self.build_model()
+    def init_frame(self, frame, track_window):
         self.tracking_model.init(frame, track_window)
 
-    def pysot_tracking_roi(self, track_window, key_frame, tracked_frame, vis=False):
-        if not self.with_model:
-            self.init_tracker(track_window, key_frame)
-            self.with_model = True
+    def pysot_tracking_roi(self, track_window, key_frame, tracked_frame, vis=False or True):
 
         outputs = self.tracking_model.track(tracked_frame)
         # import ipdb
@@ -302,28 +308,43 @@ class Tracking_Proposal(object):
             plt.show()
         return track_window
 
-    def save_result(self):
-        with open('./pkl_results/val_results_dict_{}.pkl'.format(self.index),'wb') as f:
+    def save_result(self, d_type):
+        with open('./pkl_results/{}_results_dict_{}.pkl'.format(d_type,self.index),'wb') as f:
             pickle.dump(self.result_dict, f)
 
 
 
 data_root = '/home/yhxu/code/mmaction/data/ava/rawframes/'
+d_type='train'
 def multi_track(index):
     tracking_inst = Tracking_Proposal(
         img_prefix=data_root,
-        proposal_path='/home/yhxu/code/mmaction/data/ava/ava_dense_proposals_val.FAIR.recall_93.9.pkl',
+        proposal_path='/home/yhxu/code/mmaction/data/ava/ava_dense_proposals_{}.FAIR.recall_93.9.pkl'.format(d_type),
         video_stat_file='/home/yhxu/code/mmaction/data/ava/ava_video_resolution_stats.csv',
         new_length=32,
         new_step=2,
-        with_shuffle=True
+        with_shuffle=False,
+        num_gpus=8,
+        num_workers=4,
     )
     tracking_inst.tracking(index)
-    tracking_inst.save_result()
+    tracking_inst.save_result(d_type)
 
 
 if __name__ == '__main__':
 
+    ctx = multiprocessing.get_context('spawn')
+    workers = [ctx.Process(target=multi_track,args=(rank,)) for rank in range(32)]
+    index_queue = ctx.Queue()
+    result_queue = ctx.Queue()
+    for w in workers:
+        w.daemon = True
+        w.start()
+    print('end->>!!!')
+    for i in range(1000):
+        index_queue.put(i)
+    for i in range(1000):
+        idx, res = result_queue.get()
 
     # multi_track(0)
 
@@ -350,23 +371,10 @@ if __name__ == '__main__':
     # import ipdb
     # ipdb.set_trace()
 
-    ctx = multiprocessing.get_context('spawn')
-    workers = [ctx.Process(target=multi_track,args=(rank,)) for rank in range(32)]
-    index_queue = ctx.Queue()
-    result_queue = ctx.Queue()
-    for w in workers:
-        w.daemon = True
-        w.start()
-    print('end->>!!!')
-    for i in range(1000):
-        index_queue.put(i)
-    for i in range(1000):
-        idx, res = result_queue.get()
-    #import ipdb
+        #import ipdb
     #ipdb.set_trace()
     # for
     # #     rst = result_queue.get()    #
     # print('saving_results')
 
 
-    # tracking_inst.save_result()
